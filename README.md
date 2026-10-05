@@ -4,7 +4,7 @@ VS Code と **Power Platform Tools** 拡張機能を使い、コードで開発�
 
 公式の Vite テンプレートを出発点に、開発環境の準備、Power Platform への接続、ローカルでの開発、ビルド、発行、ブラウザーでの稼働確認までを体験します。キャンバスアプリの画面設計や、Power Apps component framework (PCF) のコンポーネント開発とは別の手順です。
 
-> このリポジトリは手順書です。完成済みアプリは同梱していません。以下の手順で、リポジトリ内に `my-app` フォルダーを作成します。
+> このリポジトリには、公式 Vite テンプレートを基にした最小サンプルアプリ [my-app/README.md](my-app/README.md) を同梱しています。公開先設定と認証情報は含めていないため、初めて利用するときは手順 4 で自分の環境向けに初期化してください。CI/CD の導入案は [CICD__sample.md](CICD__sample.md) を参照してください。
 
 ## このチュートリアルのゴール
 
@@ -154,18 +154,19 @@ pa auth status
 
 > **`ServiceToServiceEnvironmentNotFound` (404) が出た場合**: エラー中の「環境がテナント内に見つからない」という記述と `pa auth status` を確認します。`pac` では同じ環境 ID に接続できているのに `pa` だけ失敗する場合は、まずアカウント・テナントの不一致を疑います。上記の操作で認証先を直し、作成済みの `my-app` フォルダーで `pa app init` だけを再実行してください。テンプレートの再取得や `npm install` のやり直しは不要です。認証先が正しい場合は、環境 ID と対象環境へのアクセス権を確認してください。
 
-## 手順 4: アプリを作成して初期化する
+## 手順 4: 同梱アプリを初期化する
 
-VS Code のターミナルで、リポジトリのルートから実行します。既に `my-app` がある場合は上書きせず、別のフォルダー名に変更してください。
+VS Code のターミナルで、リポジトリのルートから実行します。同梱の `my-app` を利用するため、テンプレートの再取得は不要です。
 
 ```powershell
-npx degit github:microsoft/PowerAppsCodeApps/templates/vite my-app
 cd my-app
-npm install
+npm ci
 pa app init --display-name "Code Apps with VS Code" --environment-id "<environment-id>"
 ```
 
 `<environment-id>` は実際の環境 ID に置き換えます。初期化時にサインインを求められた場合は、画面の案内に従って認証します。
+
+既にローカルで初期化・公開済みの場合は、`pa app init` を再実行せず、既存の公開先設定を保持してください。生成される `power.config.json` は Git の対象外です。アプリ ID を保持することで、以降の push は同じアプリの更新になります。
 
 初期化後は、生成された設定の環境 ID と表示名が正しいことを確認します。**以降のアプリ関連コマンドは、すべて `my-app` フォルダーで実行します。**
 

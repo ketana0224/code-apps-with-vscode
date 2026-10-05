@@ -1,1 +1,9 @@
 /secure_doc/
+/.vscode/
+/my-app/power.config.json
+**/.env
+**/.env.*
+!**/.env.example
+**/coverage/
+**/playwright-report/
+**/test-results/
