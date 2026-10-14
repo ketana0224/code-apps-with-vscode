@@ -71,6 +71,15 @@ git pull --ff-only
 git switch -c feature/code-apps-ci
 ```
 
+各コマンドでは、次の操作を行っています。
+
+| コマンド | 行っていること |
+| --- | --- |
+| `git status` | 現在のブランチ、未コミットの変更、未追跡ファイルの有無を確認します。意図しない変更がある場合は、ここで作業を止めて内容を確認します。 |
+| `git switch main` | CI 導入作業の起点にするローカルの `main` ブランチへ切り替えます。すでに `main` にいる場合は、ブランチの変更は行われません。 |
+| `git pull --ff-only` | GitHub の `origin/main` にある最新コミットを取得し、ローカルの `main` を更新します。`--ff-only` により、自動的なマージコミットは作成せず、安全に早送りできない場合は処理を停止します。 |
+| `git switch -c feature/code-apps-ci` | 現在の最新 `main` を起点に、`feature/code-apps-ci` という新しい作業ブランチを作成し、そのブランチへ切り替えます。`-c` は新しいブランチを作成する指定です。 |
+
 未コミットの変更がある場合は、内容を確認してから作業を開始します。
 
 ### 4-2. テストパッケージを追加する
@@ -82,11 +91,25 @@ cd C:\github\code-apps-with-vscode\my-app
 npm install --save-dev vitest jsdom @testing-library/react @testing-library/user-event @testing-library/jest-dom
 ```
 
+最初の `cd` で、npm の設定ファイルである `package.json` が置かれている `my-app` フォルダーへ移動します。続く `npm install` で、React アプリを自動テストするためのパッケージを追加します。
+
+`--save-dev` は、これらをアプリの実行に必要なパッケージではなく、開発や CI でだけ使用する `devDependencies` として登録する指定です。このコマンドを実行すると、`package.json` と `package-lock.json` が更新され、パッケージ本体は `node_modules` にインストールされます。
+
+| パッケージ | 役割 |
+| --- | --- |
+| `vitest` | テストファイルを検出して実行し、成功・失敗を判定するテストランナーです。 |
+| `jsdom` | Node.js 上に簡易的なブラウザーの DOM 環境を用意し、React コンポーネントを画面に近い状態でテストできるようにします。 |
+| `@testing-library/react` | React コンポーネントをテスト用に描画し、ボタンや文字などの画面要素を利用者に近い方法で取得します。 |
+| `@testing-library/user-event` | クリックや文字入力など、利用者の操作に近いイベントをテストから実行します。 |
+| `@testing-library/jest-dom` | 「画面に表示されている」など、DOM を読みやすく検証するための判定方法を追加します。Vitest からも利用できます。 |
+
 この操作では、`package.json` と `package-lock.json` の両方を更新します。
 
 ### 4-3. npm スクリプトを追加する
 
 `my-app/package.json` の `scripts` に、次のスクリプトを追加します。
+
+`scripts` は通常、パッケージ名やバージョンなどの基本情報の後、`dependencies` と `devDependencies` の前に配置します。JSON の項目順は動作に影響しませんが、開発者が実行可能なコマンドを見つけやすくするため、この位置に置くのが一般的です。
 
 ```json
 {
@@ -101,30 +124,367 @@ npm install --save-dev vitest jsdom @testing-library/react @testing-library/user
 }
 ```
 
+`scripts` に登録した名前は、`npm run <スクリプト名>` の形式で実行できます。JSON はコメントを記述できないため、各スクリプトの役割を次の表に示します。
+
+| スクリプト | 実行コマンド | 役割 |
+| --- | --- | --- |
+| `dev` | `npm run dev` | Vite のローカル開発サーバーを起動します。ソースを変更すると画面へ反映されます。 |
+| `build` | `npm run build` | TypeScript の型チェック後、Vite でデプロイ用ファイルを `dist` に生成します。`&&` により、型チェックが失敗した場合はビルドを実行しません。 |
+| `lint` | `npm run lint` | ESLint でソースを検査し、コード規約違反や問題になりやすい記述を検出します。`.` は現在のアプリフォルダー全体を検査する指定です。 |
+| `test` | `npm run test` | Vitest を開発用の監視モードで起動します。ファイルを変更すると、関連するテストを再実行します。 |
+| `test:ci` | `npm run test:ci` | Vitest ですべてのテストを1回だけ実行し、結果を終了コードで返します。処理が終了するため、GitHub Actions などの CI で使用します。 |
+| `preview` | `npm run preview` | `npm run build` で生成した配布用ファイルを、ローカルで確認するためのサーバーを起動します。 |
+
+今回追加するのは `test` と `test:ci` です。`test` は開発中に繰り返し確認する用途、`test:ci` は自動処理で合否を1回判定する用途として使い分けます。
+
 `test:ci` には `--passWithNoTests` を追加しません。テストがない状態を成功扱いにしないためです。
 
 ### 4-4. Vitest を設定する
 
 `my-app/vitest.config.ts` を作成し、テスト環境を `jsdom` に設定します。
 
-設定する主な内容は次のとおりです。
+Vitest は初期状態でもテストを実行できますが、React コンポーネントをブラウザーに近い環境でテストするには、テスト環境と事前処理を設定する必要があります。
 
-- React プラグインを使用する
-- テスト環境に `jsdom` を使用する
-- テストセットアップファイルを読み込む
-- テスト実行時にグローバル API を利用できるようにする
+#### 4-4-1. Vitest の設定ファイルを作成する
 
-`my-app/src/test/setup.ts` を作成し、`@testing-library/jest-dom/vitest` を読み込みます。
+`my-app/vitest.config.ts` を作成し、次の内容を記述します。
+
+```typescript
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.ts',
+  },
+})
+```
+
+各設定の役割は次のとおりです。
+
+| 設定 | 役割 |
+| --- | --- |
+| `defineConfig` | Vitest の設定であることをTypeScriptに認識させ、入力補完と型チェックを利用できるようにします。 |
+| `plugins: [react()]` | React の JSX / TSX をテスト時にも変換できるようにします。 |
+| `environment: 'jsdom'` | Node.js 上に `window`、`document` などを持つ簡易的なブラウザー環境を用意します。React コンポーネントを描画するテストで必要です。 |
+| `globals: true` | `describe`、`it`、`test`、`expect`、`beforeEach` などを、各テストファイルで毎回 import せずに使用できるようにします。 |
+| `setupFiles` | 各テストファイルの実行前に、指定したセットアップファイルを自動的に読み込みます。 |
+
+`vitest.config.ts` を分けるのは、通常起動・本番ビルド用の設定と、自動テスト用の設定では必要な処理が異なるためです。
+
+通常の `vite.config.ts` には、Code Appsとしての起動やビルドに必要なPower Apps用プラグインが含まれています。一方、現在の単体・UIテストで必要なのは、ReactのTSX変換、`jsdom`、テストの事前処理です。テストで不要なPower Apps用プラグインを読み込まないことで、テストを高速かつ単純にし、認証や実環境の状態に左右されないようにします。Power Apps用プラグインを使用しないこと自体が、Power Appsに関係するコードを一切テストできないという意味ではありません。
+
+Power Appsの機能を使用する場合は、確認内容を次のように分けます。
+
+| テストの種類 | 確認する内容 | Power Apps実環境 |
+| --- | --- | --- |
+| 単体テスト | Power Apps SDKへ渡す値、取得結果に応じた状態更新、エラー処理 | SDKをモック化するため不要 |
+| UIテスト | SDKの結果を受け取った後の表示、ボタン操作、エラーメッセージ | SDKをモック化するため不要 |
+| 結合・公開後テスト | 実際のSDK呼び出し、接続、権限、同意、Dataverseとの通信 | 必要 |
+
+例えば、Power Appsからデータを取得する画面では、単体・UIテスト用に「データ取得成功」「空の結果」「アクセス拒否」などの応答をモックし、それぞれの画面表示を検証します。実際に対象環境へ接続できるか、利用者に権限があるかまではモックでは保証できないため、デプロイ後の検証環境で別に確認します。
+
+現在の `App.tsx` はPower Apps SDKを直接使用していないため、まずはPower Apps用プラグインを含めない `vitest.config.ts` で画面操作をテストできます。将来、テスト対象の変換処理にPower Apps用プラグインが必要になった場合は、プラグインをテスト設定にも追加するか、Vite設定を選択的に共有します。ただし、PRのテストが認証や実環境接続を要求しないことを確認してから採用します。
+
+#### 4-4-2. テストセットアップファイルを作成する
+
+すべてのテストで共通して使う準備処理を、`setup.ts` にまとめます。今回は、DOM向けの判定機能をVitestへ追加する処理を記述します。
+
+`my-app/src/test/setup.ts` を新しく作成します。ファイルの内容は、次の `import` 文1行だけです。
+
+```typescript
+import '@testing-library/jest-dom/vitest'
+```
+
+この1行は、インストール済みの `@testing-library/jest-dom` からVitest用の機能を読み込む処理です。現時点では、ほかのコードを `setup.ts` に記述する必要はありません。
+
+`jest-dom` は、HTML画面の状態を読みやすい表現で確認するためのテスト支援ライブラリです。DOMはDocument Object Modelの略で、JavaScriptからHTMLのボタン、入力欄、見出しなどをプログラムで扱うための構造を指します。`jest-dom` を読み込むと、Vitest標準の `expect` にDOM専用の判定方法が追加されます。
+
+このパッケージの名前に含まれるJestはVitestとは別のテスト実行ツールですが、`jest-dom` はVitestにも対応しています。末尾に `/vitest` を付けて読み込むと、DOM向けの判定機能がVitestの `expect` に追加されます。
+
+作成した `setup.ts` は、「4-4-1. Vitest の設定ファイルを作成する」で作成した `vitest.config.ts` に記述した次の設定によって読み込まれます。
+
+```typescript
+setupFiles: './src/test/setup.ts',
+```
+
+テスト実行時の流れは次のとおりです。
+
+```text
+Vitestを起動
+  -> setupFilesで指定したsetup.tsを読み込む
+  -> jest-domのDOM向け判定機能をexpectへ追加する
+  -> 各テストファイルを実行する
+```
+
+`setup.ts` は各テストファイルより先に実行されます。その中で `@testing-library/jest-dom/vitest` を読み込むと、`toBeInTheDocument` などのDOM向け判定がVitestの `expect` にまとめて登録されます。登録後に各テストが実行されるため、個々のテストファイルで `jest-dom` を毎回 import しなくても、次の判定を使用できます。
+
+```typescript
+expect(element).toBeInTheDocument()
+expect(button).toBeEnabled()
+expect(input).toHaveValue('入力値')
+```
+
+#### 4-4-3. TypeScript に Vitest のグローバル API を認識させる
+
+`globals: true` はテスト実行時の動作を有効にする設定です。TypeScriptにも `describe` や `expect` の型を認識させるため、`my-app/tsconfig.app.json` の `types` に `vitest/globals` を追加します。
+
+変更前：
+
+```json
+"types": ["vite/client"]
+```
+
+変更後：
+
+```json
+"types": ["vite/client", "vitest/globals"]
+```
+
+この設定を追加しない場合、テスト自体はVitestから実行できても、エディターや `npm run build` で「`describe` が見つからない」などのTypeScriptエラーになる可能性があります。
+
+#### 4-4-4. 設定後のファイル構成
+
+設定後は、テスト関連ファイルが次の構成になります。
+
+```text
+my-app/
+  src/
+    test/
+      setup.ts
+  package.json
+  tsconfig.app.json
+  vite.config.ts
+  vitest.config.ts
+```
+
+この時点では設定だけで、実際のテストファイルはまだありません。次の手順で `App.test.tsx` を作成した後に `npm run test:ci` を実行します。
 
 ### 4-5. 最初の UI テストを作成する
 
-現在の `my-app/src/App.tsx` に対して、少なくとも次を検証します。
+現在の `my-app/src/App.tsx` にあるカウンターボタンを対象に、画面表示とクリック操作を自動テストします。
+
+#### 4-5-1. AIにテストファイルの作成を依頼する
+
+人がテストコードを手入力するのではなく、GitHub Copilotに対象、確認内容、実行方法を伝えて、テストの作成と検証を依頼します。例えば、VS Codeのチャットで次のように依頼します。
+
+```text
+my-app/src/App.tsx のカウンターボタンに対するUIテストを作成してください。
+
+要件:
+- テストファイルは my-app/src/App.test.tsx とする
+- React Testing Library と user-event を使用する
+- 初期表示で「count is 0」ボタンをアクセシブルな名前で取得できること
+- ボタンをクリックすると「count is 1」に変わること
+- 実装後に npm run test:ci を実行する
+- 失敗した場合は原因を修正して再実行する
+```
+
+Copilotには、コードの作成だけでなく `npm run test:ci` の実行と結果の報告まで依頼します。人は、生成されたテストが受け入れ条件を正しく検証していること、不要に実装の内部構造へ依存していないこと、テストが実際に成功していることを確認します。
+
+作成される `my-app/src/App.test.tsx` は、次のような内容になります。このコード例は人が転記するためではなく、Copilotが作成した内容をレビューする際の基準です。
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import App from './App'
+
+test('カウンターボタンをクリックすると値が1増える', async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const button = screen.getByRole('button', { name: 'count is 0' })
+  expect(button).toBeInTheDocument()
+
+  await user.click(button)
+
+  expect(
+    screen.getByRole('button', { name: 'count is 1' }),
+  ).toBeInTheDocument()
+})
+```
+
+このテストでは、次の3点を検証します。
 
 1. 初期表示に `count is 0` ボタンが存在する
 2. ボタンをクリックすると `count is 1` になる
 3. ボタンをアクセシブルな名前で取得できる
 
-テストファイルの例は `my-app/src/App.test.tsx` です。
+#### 4-5-2. テストコードの意味
+
+| コード | 行っていること |
+| --- | --- |
+| `render(<App />)` | `App` コンポーネントを `jsdom` のテスト画面へ表示します。 |
+| `screen.getByRole('button', { name: 'count is 0' })` | ボタンという役割と、利用者が認識する名前の両方を使って対象を取得します。対象が存在しない場合は、この時点でテストが失敗します。 |
+| `expect(button).toBeInTheDocument()` | 取得したボタンがテスト画面内に存在することを確認します。 |
+| `userEvent.setup()` | クリックや文字入力などの利用者操作を再現するための準備をします。 |
+| `await user.click(button)` | 利用者がボタンをクリックする操作を再現します。画面更新の完了を待つため `await` を付けます。 |
+| `name: 'count is 1'` | クリック後にボタンの表示が `count is 1` へ変わったことを確認します。 |
+
+`getByRole` は、単にHTMLのタグ名やCSSクラスで探すのではなく、利用者や支援技術が認識する役割と名前で画面要素を探します。そのため、画面が操作可能であることを意識したテストになります。
+
+#### 4-5-3. テストを実行して結果を確認する
+
+##### 4-5-3-1. テストを実行する
+
+作成したテストをローカルで確認します。
+
+```powershell
+cd C:\github\code-apps-with-vscode\my-app
+npm run test:ci
+```
+
+##### 4-5-3-2. 成功した場合
+
+成功した場合の出力例は次のとおりです。実行時間はPCの性能や実行状況によって変わります。
+
+```text
+> vite@0.0.0 test:ci
+> vitest run
+
+ RUN  v5.0.4 C:/github/code-apps-with-vscode/my-app
+
+ ✓ src/App.test.tsx (1 test) 261ms
+   ✓ カウンターボタンをクリックすると値が1増える 258ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  14:12:50
+   Duration  2.24s (environment 61%, setup 15%, tests 13%, import 8%, transform 3%, worker 1%)
+```
+
+主な表示の意味は次のとおりです。
+
+| 表示 | 意味 |
+| --- | --- |
+| `vitest run` | `test:ci` スクリプトから、Vitestを1回実行するコマンドが呼び出されたことを示します。 |
+| `RUN v5.0.4` | 実行したVitestのバージョンと、テストの基準となるフォルダーを示します。 |
+| `✓ src/App.test.tsx (1 test)` | `App.test.tsx` にある1件のテストが成功したことを示します。 |
+| `✓ カウンターボタンをクリックすると値が1増える` | 成功した個別のテスト名と、そのテストにかかった時間を示します。 |
+| `Test Files 1 passed (1)` | 検出したテストファイル1個のうち、1個が成功したことを示します。 |
+| `Tests 1 passed (1)` | 検出したテスト1件のうち、1件が成功したことを示します。 |
+| `Start at` | テストを開始した時刻です。 |
+| `Duration` | テスト全体の所要時間と、環境準備、セットアップ、テスト、読み込み、変換などに使った時間の割合です。 |
+
+`Test Files` と `Tests` の両方が `passed` であり、失敗を示す `failed` がなければ、テストは成功です。
+
+これで、最初のUIテストの作成とローカル確認は完了です。
+
+##### 4-5-3-3. 失敗した場合
+
+`failed` が表示された場合は、その出力をCopilotに提示して原因の調査と修正を依頼します。このとき、テストを削除したり期待値を実装に合わせて変更したりせず、最初に定めた受け入れ条件を満たすように修正し、再度 `npm run test:ci` を実行します。
+
+##### 4-5-3-4. 監視モードで繰り返し確認する
+
+開発中にファイルを変更するたびに結果を確認したい場合は、次の監視モードを使用します。
+
+```powershell
+npm run test
+```
+
+監視モードを終了する場合は、ターミナルで `q` を押すか、`Ctrl+C` を使用します。
+
+##### 4-5-3-5. Pull Requestで再検証する
+
+ローカルでテストが成功したら、変更を作業ブランチへコミットしてGitHubへpushし、`main` へ取り込むためのPull Requestを作成します。
+
+最初に、現在のブランチと変更ファイルを確認します。
+
+```powershell
+cd C:\github\code-apps-with-vscode
+git status
+```
+
+現在のブランチが `feature/code-apps-ci` であることと、今回変更したファイルだけが表示されることを確認します。
+
+確認後、今回の変更ファイルをステージします。
+
+```powershell
+git add -- my-app
+```
+
+このコマンドは、アプリとテストに関係する `my-app` フォルダー内の変更だけをステージします。`CICD実装手順書.md` はアプリの実行には不要なため、このコミットには含めません。手順書の変更をGitHubへ反映する場合は、アプリの変更とは別のドキュメント用コミットまたはPull Requestとして管理します。
+
+ステージした内容を確認します。
+
+```powershell
+git status
+git diff --cached
+```
+
+問題がなければコミットします。
+
+```powershell
+git commit -m "test: add initial UI test setup"
+```
+
+作業ブランチをGitHubへpushします。
+
+```powershell
+git push -u origin feature/code-apps-ci
+```
+
+`-u` を付けると、ローカルの `feature/code-apps-ci` とGitHub上の同名ブランチが関連付けられます。2回目以降は `git push` だけで同じブランチへ送信できます。
+
+push後、GitHubでこのリポジトリを開くと、通常は `Compare & pull request` ボタンが表示されます。ボタンを選択し、次の内容を確認してPull Requestを作成します。
+
+| 項目 | 設定内容 |
+| --- | --- |
+| base | `main` |
+| compare | `feature/code-apps-ci` |
+| タイトル | `Add Code Apps CI test setup` など、変更内容が分かる名称 |
+| 本文 | 変更内容、実行したテスト、テスト結果、未対応事項を記載 |
+
+Pull Request本文の例：
+
+```markdown
+## 変更内容
+
+- VitestとReact Testing Libraryを追加
+- Vitestの設定と共通セットアップを追加
+- カウンターボタンのUIテストを追加
+- CI/CD実装手順書を更新
+
+## 検証
+
+- `npm run test:ci`
+  - Test Files: 1 passed
+  - Tests: 1 passed
+
+## 未対応
+
+- GitHub Actionsワークフローは後続手順で追加
+```
+
+この時点では、GitHub Actionsのワークフローはまだ作成していません。「4-7. CI ワークフローを作成する」を完了すると、Pull Requestの作成または更新をきっかけに、GitHub側で次の処理が自動的に実行されます。
+
+```text
+作業ブランチをGitHubへpush
+  -> main向けのPull Requestを作成または更新
+  -> GitHub Actionsが新しい実行環境を用意
+  -> リポジトリのソースを取得
+  -> npm ciでpackage-lock.jsonどおりに依存関係を復元
+  -> npm run lintを実行
+  -> npm run test:ciを実行
+  -> npm run buildを実行
+  -> Pull Requestに成功または失敗を表示
+```
+
+ローカルテストとGitHub Actionsのテストでは、同じ `npm run test:ci` を使用しますが、実行環境が異なります。
+
+| 実行場所 | 目的 |
+| --- | --- |
+| ローカルPC | Pull Requestを作成する前に問題を早く発見し、修正する |
+| GitHub Actions | 新しく用意した環境で依存関係を復元し、ほかの開発者の環境でも再現できる状態か確認する |
+
+GitHub Actionsでは、ローカルに残っている `node_modules`、一時ファイル、未コミットの変更を利用できません。そのため、ローカルでは成功しても、必要なファイルのコミット漏れや `package-lock.json` の不整合があると失敗します。
+
+Pull Requestでは、GitHubの `Checks` または `Actions` から `Validate` ジョブを開き、`npm run test:ci` を含む全ステップが成功していることを確認します。後続の「5-1. mainを保護する」で `Validate` を必須チェックに設定すると、このジョブが失敗している間はPull Requestを `main` へマージできなくなります。
+
+#### 4-5-4. 今後のテスト追加方針
 
 今後アプリの仕様を変更する場合は、Issue の受け入れ条件に対応するテストを追加します。Power Apps SDK や実環境に依存する機能は PR のテストではモック化し、実接続を使う検証と分離します。
 
