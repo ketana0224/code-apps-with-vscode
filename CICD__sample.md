@@ -278,10 +278,10 @@ jobs:
       run:
         working-directory: my-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.22.0'
           cache: npm
@@ -315,7 +315,7 @@ jobs:
       run:
         working-directory: my-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Reject stale deployment
@@ -328,7 +328,7 @@ jobs:
             echo "main has advanced; deploy the newer run instead."
             exit 1
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.22.0'
           cache: npm
