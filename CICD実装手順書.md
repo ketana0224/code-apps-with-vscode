@@ -18,6 +18,63 @@
 
 VS CodeのGitHub Copilot Chatへ依頼する箇所は、本書に記載した `text` コードブロックをVS Codeのチャットへ貼り付けます。GitHub Webで行う操作は各手順で「GitHubで」または「GitHubの設定画面で」と明記します。
 
+### 1-2. 前提ソフトウェアとアカウント
+
+本書を開始する前に、次のソフトウェアとアカウントを準備します。
+
+| 前提 | 使用する段階 | 用途 |
+| --- | --- | --- |
+| WindowsとPowerShell | 全段階 | ローカルコマンドの実行 |
+| Visual Studio Code | 全段階 | リポジトリの編集とCopilot Chatの利用 |
+| GitHub Copilot | 全段階 | コード、テスト、設定、ワークフローの作成と検証 |
+| Git for Windows | 全段階 | ブランチ、コミット、pushの操作 |
+| Node.js `22.22.0`とnpm | 全段階 | 依存関係の復元、lint、テスト、ビルド |
+| GitHub CLI `gh` | 段階1以降 | VS CodeのCopilotからPull Requestを作成・確認する |
+| GitHubアカウント | 全段階 | 対象リポジトリ、Actions、Settingsへのアクセス |
+| Power Platform Toolsと`pac` | 段階2以降 | Power Platform環境と認証状態の確認 |
+| Power Apps CLI `pa` | 段階2以降 | Code Appの認証、共有、公開 |
+| Webブラウザー | 全段階 | GitHub、Entra ID、Power Platform、公開アプリの確認 |
+
+GitHubアカウントには、対象リポジトリのブランチへpushし、Pull Requestを作成できる権限が必要です。リポジトリのRuleset、Environment、Secretを設定する担当者には管理権限も必要です。
+
+GitHub CopilotはVS CodeでGitHubアカウントにサインインし、Copilot Chatを利用できる状態にします。GitHub CLIが未導入の場合は、PowerShellで次を実行します。
+
+```powershell
+winget install --id GitHub.cli --exact --accept-source-agreements --accept-package-agreements
+```
+
+インストール後にVS Codeのターミナルを開き直し、GitHub CLIを認証します。
+
+```powershell
+gh auth login --web --git-protocol https
+gh auth status
+```
+
+ブラウザーに表示されたGitHubの認証画面で、対象リポジトリへアクセスできるアカウントを選択します。Personal Access Tokenや認証コードをソースコード、Issue、Pull Request、チャットへ貼り付けません。
+
+Power Platform ToolsとPower Apps CLIの導入方法は、リポジトリの `README.md` にある「手順2: VS CodeとPower Platform Toolsを準備する」に従います。Power Apps CLIが未導入の場合は次を実行します。
+
+```powershell
+npm install --global @microsoft/power-apps-cli
+npm install --global @microsoft/power-apps
+```
+
+作業を開始するターミナルで、必要なツールを確認します。
+
+```powershell
+git --version
+node --version
+npm --version
+gh --version
+gh auth status
+Get-Command pac
+pac help
+Get-Command pa
+pa --help
+```
+
+`node --version` が `v22.22.0` ではない場合は、後続作業へ進む前にNode.jsのバージョンを合わせます。段階1だけを実施する場合でも、Git、Node.js、npm、GitHub CLI、VS CodeのGitHub Copilot Chatは確認します。`pac` と `pa` は段階2へ進む前までに確認します。
+
 各段階では、次の順番を守ります。
 
 ```text
@@ -818,9 +875,31 @@ git push -u origin feature/code-apps-ci
 
 #### 4-9-2. Pull Requestを作成する
 
-push後、同じ作業ブランチから `main` 向けのPull Requestがまだ存在しない場合だけ、GitHub Webで新しく作成します。すでにPull Requestが存在する場合は新しく作成せず、pushによって更新された既存のPull Requestを開きます。
+push後、VS CodeのGitHub Copilot Chatに、GitHub CLIを使用したPull Requestの作成準備を依頼します。
 
-GitHub操作をVS CodeのGitHub Copilot ChatまたはGitHub CLIへ依頼する場合も、baseとhead、タイトル、本文を提示させ、作成または更新前に確認します。
+```text
+現在の作業ブランチからmain向けのPull Requestを作成する準備をしてください。
+
+- gh auth statusでGitHub CLIの認証状態を確認する
+- baseはmain、headは現在の作業ブランチにする
+- 同じbaseとheadのOpen状態のPull Requestがないか確認する
+- タイトルは「Add Code Apps CI validation」とする
+- 本文はこの手順書の4-9-2にあるPull Request本文例を使用する
+- base、head、タイトル、本文を表示して報告する
+- この時点ではPull Requestを作成、更新、マージしない
+```
+
+人がbase、head、タイトル、本文に問題がないことを確認した後、VS CodeのGitHub Copilot Chatへ作成を許可します。
+
+```text
+Pull Requestの内容に問題ありません。
+提示したbase、head、タイトル、本文を使用して、GitHub CLIでPull Requestを作成してください。
+
+- 作成後にPull Requestの番号とURLを報告する
+- マージ、デプロイ、ブランチ削除は実行しない
+```
+
+すでに同じbaseとheadのOpen状態のPull Requestが存在する場合は、新しく作成せず、そのURLを報告させます。GitHub CLIを利用できない場合だけ、次の表と本文例を使用してGitHub Webから手動で作成します。
 
 | 項目 | 設定内容 |
 | --- | --- |
@@ -836,24 +915,42 @@ Pull Request本文の例は次のとおりです。
 
 - VitestとReact Testing Libraryを追加
 - カウンターボタンのUIテストを追加
-- 公開先設定テンプレートを追加
+- 実環境情報を含まない公開先設定テンプレートを追加
 - GitHub ActionsのValidateジョブを追加
+- リポジトリ共通のGitHub Copilot指示を追加
+- CI/CD実装手順書と構成例を更新
+- `actions/checkout`と`actions/setup-node`を公式READMEの`v7`へ更新
 
 ## 受け入れ条件とテスト
 
 - カウンターボタンをクリックすると値が1増える
-  - `src/App.test.tsx`で確認
+  - `my-app/src/App.test.tsx`で確認
 
 ## ローカル検証
 
+- `npm ci`: 成功
 - `npm run lint`: 成功
-- `npm run test:ci`: 1件成功
+- `npm run test:ci`: 1ファイル、1テスト成功
 - `npm run build`: 成功
+- `git diff --check`: 成功
+
+## セキュリティ確認
+
+- ワークフロー権限は`contents: read`のみ
+- checkoutの`persist-credentials`を無効化
+- Secret、実環境ID、アプリIDを含まない
+- `pull_request_target`を使用しない
+- デプロイ処理と実環境接続を含まない
+- `power.config.json`はGit管理対象外
 
 ## 未対応・残存リスク
 
+- GitHub Actions上でのValidate結果は、このPR作成後に確認する
 - 自動デプロイは段階3で追加する
 - Power Apps実環境への接続はこのPRでは行わない
+- 開発依存関係の`source-map-js`にHigh severityの脆弱性が1件ある
+  - `npm audit --omit=dev`では脆弱性0件
+- 自動CDでSecretを扱う前に、使用するActionを確認済みのコミットSHAへ固定する
 ```
 
 #### 4-9-3. Validateジョブを確認する
@@ -887,13 +984,44 @@ GitHubの `Checks` または `Actions` から `Validate` ジョブを開き、�
 
 失敗した場合はマージせず、失敗したステップのログとIssueの受け入れ条件をCopilotへ渡して修正を依頼します。修正後は4-8から繰り返します。
 
+#### 4-9-4. Pull Request作成後に追加変更が発生した場合
+
+Pull Request作成後にファイルを変更した場合、変更前のコミットに対する `Validate` が成功していても、最新状態の検証結果にはなりません。マージへ進む前に、作業ツリーとPull Requestの最新コミットを一致させます。
+
+VS CodeのGitHub Copilot Chatに次のように依頼します。
+
+```text
+Pull Request作成後の追加変更を確認してください。
+
+- 現在のブランチとgit statusを確認する
+- 未コミット変更のファイルと内容を確認する
+- Pull Requestの目的と関係のない変更がないか確認する
+- アプリ、依存関係、ワークフローを変更した場合は4-8と同じlint、test:ci、buildを実行する
+- ドキュメントだけの変更の場合はgit diff --checkとMarkdown構造を確認する
+- 変更ファイル、必要な検証、結果、Pull Request本文の更新要否を報告する
+- この時点ではコミットとpushを実行しない
+```
+
+報告に問題がなければ、変更内容に合うConventional Commit形式のメッセージで追加コミットし、同じ作業ブランチへpushするようCopilotへ依頼します。新しいPull Requestは作成しません。同じブランチへのpushによって、既存のPull Requestが自動更新されます。
+
+push後は次を確認します。
+
+1. Pull Requestのheadが追加コミットのSHAになっている
+2. 追加変更で説明、検証結果、残存リスクが変わった場合はPull Request本文を更新する
+3. 新しい `Validate` が起動する
+4. 最新コミットに対する `Validate` が成功する
+5. ローカルの `git status` に未コミット変更がない
+
+古いコミットに対する成功結果は、最新コミットの完了判定に使用しません。追加変更と最新の `Validate` が成功するまで、4-10および5-1へ進みません。
+
 ### 4-10. 段階1の完了条件
 
 - [ ] `test:ci` が定義されている
 - [ ] 受け入れ条件に対応するテストが存在する
 - [ ] `power.config.template.json` に実環境の ID が含まれていない
 - [ ] ローカルで lint・テスト・ビルドが成功する
-- [ ] Pull Request の `Validate` が認証情報なしで成功する
+- [ ] ローカルの `git status` に未コミット変更がない
+- [ ] Pull Requestの最新コミットに対する `Validate` が認証情報なしで成功する
 
 ## 5. 段階2: main の保護と手動デプロイ
 
