@@ -1,0 +1,48 @@
+name: Code Apps CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: my-app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare build configuration
+        run: cp power.config.template.json power.config.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test:ci
+
+      - name: Build
+        run: npm run build

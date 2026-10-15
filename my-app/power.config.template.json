@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "appId": "",
+  "appDisplayName": "Code Apps with VS Code",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "",
+  "description": "Code Apps tutorial",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {}
+}
